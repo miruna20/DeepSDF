@@ -1,0 +1,32 @@
+---
+version: 1
+
+kind: experiment
+
+framework: pytorch
+
+tags: [examples]
+ 
+build:
+  image: pytorch/pytorch:1.12.0-cuda11.3-cudnn8-runtime
+  build_steps:
+    - pip install -r requirements.txt
+
+environment:
+  resources:
+    cpu:
+      requests: 4
+      limits: 10
+    memory:
+      requests: 30720
+      limits: 51200
+    gpu:
+      requests: 1
+      limits: 1
+
+  
+run:
+  #cmd: python3 -u generate_training_meshes.py -e /code/examples/vertebrae_all --cluster --keep_normalization
+  cmd: python3 -u train_deep_sdf.py -e /code/examples/vertebrae_all/training --cluster
+  #cmd: python3 -u reconstruct.py -e /code/examples/vertebrae_2/ --split /code/examples/splits/verse2020_test.json -d data --cluster
+  #cmd: python3 -u generate_training_meshes.py -e /code/examples/vertebrae_2 --cluster --keep_normalization

@@ -22,7 +22,7 @@ training_meshes_subdir = "TrainingMeshes"
 
 
 def load_experiment_specifications(experiment_directory):
-
+    
     filename = os.path.join(experiment_directory, specifications_filename)
 
     if not os.path.isfile(filename):
@@ -32,7 +32,6 @@ def load_experiment_specifications(experiment_directory):
         )
 
     return json.load(open(filename))
-
 
 def load_model_parameters(experiment_directory, checkpoint, decoder):
 
@@ -57,8 +56,9 @@ def build_decoder(experiment_directory, experiment_specs):
     )
 
     latent_size = experiment_specs["CodeLength"]
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    decoder = arch.Decoder(latent_size, **experiment_specs["NetworkSpecs"]).cuda()
+    decoder = arch.Decoder(latent_size, **experiment_specs["NetworkSpecs"]).to(device)
 
     return decoder
 

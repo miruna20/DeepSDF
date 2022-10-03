@@ -132,7 +132,7 @@ if __name__ == "__main__":
         dest="test_sampling",
         default=False,
         action="store_true",
-        help="If set, the script will produce SDF samplies for testing",
+        help="If set, the script will produce SDF samples for testing",
     )
     arg_parser.add_argument(
         "--surface",

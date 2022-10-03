@@ -1,0 +1,10 @@
+/bin/
+/build/
+/data/
+*.npz
+*.npy
+*LatentCodes/
+*ModelParameters/
+*OptimizerParameters/
+*TrainingMeshes/
+*Logs.pth

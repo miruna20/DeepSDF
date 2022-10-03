@@ -10,8 +10,9 @@ import torch
 import deep_sdf
 import deep_sdf.workspace as ws
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def code_to_mesh(experiment_directory, checkpoint, keep_normalized=False):
+def code_to_mesh(experiment_directory, output_directory, checkpoint, keep_normalized=False, cluster=False):
 
     specs_filename = os.path.join(experiment_directory, "specs.json")
 
@@ -31,13 +32,13 @@ def code_to_mesh(experiment_directory, checkpoint, keep_normalized=False):
     decoder = torch.nn.DataParallel(decoder)
 
     saved_model_state = torch.load(
-        os.path.join(experiment_directory, ws.model_params_subdir, checkpoint + ".pth")
+        os.path.join(experiment_directory, ws.model_params_subdir, checkpoint + ".pth"),map_location=device
     )
     saved_model_epoch = saved_model_state["epoch"]
 
     decoder.load_state_dict(saved_model_state["model_state_dict"])
 
-    decoder = decoder.module.cuda()
+    decoder = decoder.module.to(device)
 
     decoder.eval()
 
@@ -48,7 +49,12 @@ def code_to_mesh(experiment_directory, checkpoint, keep_normalized=False):
     with open(train_split_file, "r") as f:
         train_split = json.load(f)
 
-    data_source = specs["DataSource"]
+    if(cluster):
+        from polyaxon_client.tracking import Experiment, get_data_paths, get_outputs_path
+        data_paths_polyaxon = get_data_paths()
+        data_source = os.path.join(data_paths_polyaxon['data1'], "USShapeCompletion", specs["DataSource"])
+    else:
+        data_source = specs["DataSource"]
 
     instance_filenames = deep_sdf.data.get_instance_filenames(data_source, train_split)
 
@@ -62,7 +68,7 @@ def code_to_mesh(experiment_directory, checkpoint, keep_normalized=False):
         print("{} {} {}".format(dataset_name, class_name, instance_name))
 
         mesh_dir = os.path.join(
-            experiment_directory,
+            output_directory,
             ws.training_meshes_subdir,
             str(saved_model_epoch),
             dataset_name,
@@ -90,6 +96,7 @@ def code_to_mesh(experiment_directory, checkpoint, keep_normalized=False):
             offset = normalization_params["offset"]
             scale = normalization_params["scale"]
 
+        latent_vector = latent_vector.to(device)
         with torch.no_grad():
             deep_sdf.mesh.create_mesh(
                 decoder,
@@ -130,10 +137,23 @@ if __name__ == "__main__":
         action="store_true",
         help="If set, keep the meshes in the normalized scale.",
     )
+    arg_parser.add_argument(
+        "--cluster",
+        dest="cluster",
+        default=False,
+        action="store_true",
+        help="If set, training on cluster will be enabled",
+    )
+
     deep_sdf.add_common_args(arg_parser)
 
     args = arg_parser.parse_args()
 
     deep_sdf.configure_logging(args)
 
-    code_to_mesh(args.experiment_directory, args.checkpoint, args.keep_normalized)
+    if (args.cluster):
+        from polyaxon_client.tracking import Experiment, get_data_paths, get_outputs_path
+        output_directory = get_outputs_path()
+    else:
+        output_directory = args.experiment_directory
+    code_to_mesh(args.experiment_directory, output_directory, args.checkpoint, args.keep_normalized, cluster=args.cluster)

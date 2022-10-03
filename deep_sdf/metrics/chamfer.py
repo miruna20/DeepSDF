@@ -10,7 +10,7 @@ def compute_trimesh_chamfer(gt_points, gen_mesh, offset, scale, num_mesh_samples
     """
     This function computes a symmetric chamfer distance, i.e. the sum of both chamfers.
 
-    gt_points: trimesh.points.PointCloud of just poins, sampled from the surface (see
+    gt_points: trimesh.points.PointCloud of just points, sampled from the surface (see
                compute_metrics.ply for more documentation)
 
     gen_mesh: trimesh.base.Trimesh of output mesh from whichever autoencoding reconstruction

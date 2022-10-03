@@ -12,7 +12,7 @@ import deep_sdf.utils
 
 
 def create_mesh(
-    decoder, latent_vec, filename, N=256, max_batch=32 ** 3, offset=None, scale=None
+    decoder, latent_vec, filename, N=16, max_batch=32 ** 3, offset=None, scale=None
 ):
     start = time.time()
     ply_filename = filename
@@ -43,9 +43,10 @@ def create_mesh(
     samples.requires_grad = False
 
     head = 0
-
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Hellooo")
     while head < num_samples:
-        sample_subset = samples[head : min(head + max_batch, num_samples), 0:3].cuda()
+        sample_subset = samples[head : min(head + max_batch, num_samples), 0:3].to(device)
 
         samples[head : min(head + max_batch, num_samples), 3] = (
             deep_sdf.utils.decode_sdf(decoder, latent_vec, sample_subset)
@@ -93,8 +94,16 @@ def convert_sdf_samples_to_ply(
 
     numpy_3d_sdf_tensor = pytorch_3d_sdf_tensor.numpy()
 
-    verts, faces, normals, values = skimage.measure.marching_cubes_lewiner(
-        numpy_3d_sdf_tensor, level=0.0, spacing=[voxel_size] * 3
+    #TODO changed for the vertebrae beacuse this is how we extracted in ImFusion
+    """
+    verts, faces, normals, values = skimage.measure.marching_cubes(
+        volume = numpy_3d_sdf_tensor, level=0.0, spacing=[voxel_size] * 3,method='lewiner'
+    )
+    """
+    print("Volume min:" + str(numpy_3d_sdf_tensor.min()))
+    print("Volume max:" + str(numpy_3d_sdf_tensor.max()))
+    verts, faces, normals, values = skimage.measure.marching_cubes(
+        volume = numpy_3d_sdf_tensor, level=0.0, spacing=[voxel_size] * 3,method='lewiner'
     )
 
     # transform from voxel coordinates to camera coordinates

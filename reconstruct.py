@@ -8,6 +8,7 @@ import os
 import random
 import time
 import torch
+import wandb
 
 import deep_sdf
 import deep_sdf.workspace as ws
@@ -33,11 +34,12 @@ def reconstruct(
 
     decreased_by = 10
     adjust_lr_every = int(num_iterations / 2)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     if type(stat) == type(0.1):
-        latent = torch.ones(1, latent_size).normal_(mean=0, std=stat).cuda()
+        latent = torch.ones(1, latent_size).normal_(mean=0, std=stat).to(device)
     else:
-        latent = torch.normal(stat[0].detach(), stat[1].detach()).cuda()
+        latent = torch.normal(stat[0].detach(), stat[1].detach()).to(device)
 
     latent.requires_grad = True
 
@@ -51,7 +53,7 @@ def reconstruct(
         decoder.eval()
         sdf_data = deep_sdf.data.unpack_sdf_samples_from_ram(
             test_sdf, num_samples
-        ).cuda()
+        ).to(device)
         xyz = sdf_data[:, 0:3]
         sdf_gt = sdf_data[:, 3].unsqueeze(1)
 
@@ -63,7 +65,7 @@ def reconstruct(
 
         latent_inputs = latent.expand(num_samples, -1)
 
-        inputs = torch.cat([latent_inputs, xyz], 1).cuda()
+        inputs = torch.cat([latent_inputs, xyz], 1).to(device)
 
         pred_sdf = decoder(inputs)
 
@@ -79,10 +81,12 @@ def reconstruct(
         loss.backward()
         optimizer.step()
 
+
         if e % 50 == 0:
             logging.debug(loss.cpu().data.numpy())
             logging.debug(e)
             logging.debug(latent.norm())
+            wandb.log({"loss_reconstruction": loss.cpu().data.numpy().item()})
         loss_num = loss.cpu().data.numpy()
 
     return loss_num, latent
@@ -127,7 +131,7 @@ if __name__ == "__main__":
     arg_parser.add_argument(
         "--iters",
         dest="iterations",
-        default=800,
+        default=2,
         help="The number of iterations of latent code optimization to perform.",
     )
     arg_parser.add_argument(
@@ -136,6 +140,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Skip meshes which have already been reconstructed.",
     )
+    arg_parser.add_argument(
+        "--cluster",
+        dest="cluster",
+        default=False,
+        action="store_true",
+        help="If set, training on cluster will be enabled",
+    )
+
+    print("Reconstructing chairs...")
+
+    wandb.login(key="845cb3b94791a8d541b28fd3a9b2887374fe8b2c")
+    wandb.init(project="Reconstruction")
+
+    print("Initialization of wandb successfull")
+
     deep_sdf.add_common_args(arg_parser)
 
     args = arg_parser.parse_args()
@@ -143,7 +162,9 @@ if __name__ == "__main__":
     deep_sdf.configure_logging(args)
 
     def empirical_stat(latent_vecs, indices):
-        lat_mat = torch.zeros(0).cuda()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        lat_mat = torch.zeros(0).to(device)
         for ind in indices:
             lat_mat = torch.cat([lat_mat, latent_vecs[ind]], 0)
         mean = torch.mean(lat_mat, 0)
@@ -166,22 +187,33 @@ if __name__ == "__main__":
     decoder = arch.Decoder(latent_size, **specs["NetworkSpecs"])
 
     decoder = torch.nn.DataParallel(decoder)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     saved_model_state = torch.load(
         os.path.join(
             args.experiment_directory, ws.model_params_subdir, args.checkpoint + ".pth"
-        )
+        ),map_location=device
     )
     saved_model_epoch = saved_model_state["epoch"]
 
     decoder.load_state_dict(saved_model_state["model_state_dict"])
 
-    decoder = decoder.module.cuda()
+    decoder = decoder.module.to(device)
+
+    wandb.watch(decoder,log_freq=1)
 
     with open(args.split_filename, "r") as f:
         split = json.load(f)
 
-    npz_filenames = deep_sdf.data.get_instance_filenames(args.data_source, split)
+    if (args.cluster):
+        from polyaxon_client.tracking import Experiment, get_data_paths, get_outputs_path
+        data_paths_polyaxon = get_data_paths()
+        data_source = os.path.join(data_paths_polyaxon['data1'], "USShapeCompletion", args.data_source)
+        output_directory = get_outputs_path()
+    else:
+        data_source = args.data_source
+        output_directory = args.experiment_directory
+    npz_filenames = deep_sdf.data.get_instance_filenames(data_source, split)
 
     random.shuffle(npz_filenames)
 
@@ -193,7 +225,7 @@ if __name__ == "__main__":
     rerun = 0
 
     reconstruction_dir = os.path.join(
-        args.experiment_directory, ws.reconstructions_subdir, str(saved_model_epoch)
+        output_directory, ws.reconstructions_subdir, str(saved_model_epoch)
     )
 
     if not os.path.isdir(reconstruction_dir):
@@ -216,7 +248,7 @@ if __name__ == "__main__":
         if "npz" not in npz:
             continue
 
-        full_filename = os.path.join(args.data_source, ws.sdf_samples_subdir, npz)
+        full_filename = os.path.join(data_source, ws.sdf_samples_subdir, npz)
 
         logging.debug("loading {}".format(npz))
 

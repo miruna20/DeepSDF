@@ -13,11 +13,10 @@ import deep_sdf.workspace as ws
 
 
 def evaluate(experiment_directory, checkpoint, data_dir, split_filename):
-
     with open(split_filename, "r") as f:
         split = json.load(f)
 
-    chamfer_results = []
+    evaluation_results = []
 
     for dataset in split:
         for class_name in split[dataset]:
@@ -69,26 +68,34 @@ def evaluate(experiment_directory, checkpoint, data_dir, split_filename):
                     normalization_params["offset"],
                     normalization_params["scale"],
                 )
+                print("Evaluating for " + str(instance_name))
+                emd_dist = deep_sdf.metrics.EMD.compute_trimesh_emd(
+                    ground_truth_points,
+                    reconstruction,
+                    normalization_params["offset"],
+                    normalization_params["scale"],
+                    num_mesh_samples=500
+                )
 
                 logging.debug("chamfer distance: " + str(chamfer_dist))
+                logging.debug("earth movers distance: " + str(emd_dist))
 
-                chamfer_results.append(
-                    (os.path.join(dataset, class_name, instance_name), chamfer_dist)
+                evaluation_results.append(
+                    (os.path.join(dataset, class_name, instance_name), chamfer_dist, emd_dist)
                 )
 
     with open(
-        os.path.join(
-            ws.get_evaluation_dir(experiment_directory, checkpoint, True), "chamfer.csv"
-        ),
-        "w",
+            os.path.join(
+                ws.get_evaluation_dir(experiment_directory, checkpoint, True), "evaluation.csv"
+            ),
+            "w",
     ) as f:
-        f.write("shape, chamfer_dist\n")
-        for result in chamfer_results:
-            f.write("{}, {}\n".format(result[0], result[1]))
+        f.write("shape, chamfer_dist, emd\n")
+        for result in evaluation_results:
+            f.write("{}, {}, {}\n".format(result[0], result[1], result[2]))
 
 
 if __name__ == "__main__":
-
     arg_parser = argparse.ArgumentParser(description="Evaluate a DeepSDF autodecoder")
     arg_parser.add_argument(
         "--experiment",
@@ -96,7 +103,7 @@ if __name__ == "__main__":
         dest="experiment_directory",
         required=True,
         help="The experiment directory. This directory should include experiment specifications in "
-        + '"specs.json", and logging will be done in this directory as well.',
+             + '"specs.json", and logging will be done in this directory as well.',
     )
     arg_parser.add_argument(
         "--checkpoint",

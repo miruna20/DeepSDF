@@ -127,6 +127,7 @@ class SDFSamples(torch.utils.data.Dataset):
         print_filename=False,
         num_files=1000000,
     ):
+        # number of samples per shape
         self.subsample = subsample
 
         self.data_source = data_source
